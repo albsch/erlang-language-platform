@@ -89,6 +89,7 @@ where
     };
     let (source, code) = match &d.code {
         DiagnosticCode::Eqwalizer(code) => (Some("eqWAlizer".into()), code.clone()),
+        DiagnosticCode::Etylizer(code) => (Some("etylizer".into()), code.clone()),
         _ => (Some("elp".into()), d.code.to_string()),
     };
     lsp_types::Diagnostic {

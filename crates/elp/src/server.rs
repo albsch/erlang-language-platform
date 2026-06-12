@@ -1237,17 +1237,12 @@ impl Server {
             let diagnostics_types = opened_documents
                 .into_par_iter()
                 .map_with(snapshot, |snapshot, file_id| {
-                    let diags = snapshot
-                        .eqwalizer_diagnostics(file_id, include_otp)
-                        .unwrap_or_default();
-                    let types = snapshot
-                        .eqwalizer_types(file_id, include_otp)
-                        .unwrap_or_default();
-                    if diags.is_empty() && types.is_empty() {
-                        None
-                    } else {
-                        Some((file_id, diags, types))
-                    }
+                    // etylizer replaces eqwalizer as the type-error diagnostics source.
+                    // `None`       => file not re-checked this run; keep its cached diagnostics.
+                    // `Some(diags)` => re-checked; replace them (an empty list clears the file).
+                    // etylizer provides no type info, so the types map is left empty.
+                    let diags = snapshot.etylizer_diagnostics(file_id, include_otp)?;
+                    Some((file_id, diags, Arc::new(Vec::new())))
                 })
                 .flatten()
                 .collect();

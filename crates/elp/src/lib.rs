@@ -34,6 +34,7 @@ pub mod cli;
 pub mod config;
 pub mod convert;
 pub mod document;
+pub mod etylizer;
 mod from_proto;
 mod handlers;
 pub mod line_endings;

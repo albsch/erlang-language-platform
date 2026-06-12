@@ -232,6 +232,46 @@ impl Snapshot {
         self.analysis.eqwalizer_diagnostics_for_file(file_id).ok()?
     }
 
+    /// Type-error diagnostics produced by running the etylizer escript on the (saved) file.
+    /// Used in place of `eqwalizer_diagnostics` to surface etylizer's errors in the editor.
+    pub fn etylizer_diagnostics(
+        &self,
+        file_id: FileId,
+        include_otp: bool,
+    ) -> Option<Vec<diagnostics::Diagnostic>> {
+        if !include_otp && self.is_otp(file_id) {
+            return None;
+        }
+
+        let file_path = self.file_id_to_path(file_id)?;
+        let project_root = self.workspace_root(file_id);
+        let line_index = self.analysis.line_index(file_id).ok()?;
+        let include_dirs = self.analysis.etylizer_include_dirs(file_id).unwrap_or_default();
+
+        let result = match crate::etylizer::run(
+            project_root.as_path(),
+            file_path.as_path(),
+            &include_dirs,
+        ) {
+            Ok(result) => result,
+            Err(err) => {
+                log::warn!("etylizer failed for {file_path}: {err}");
+                return None;
+            }
+        };
+        // With `--no-deps`, `checked` is either empty (file skipped, keep cache) or contains
+        // this file (re-checked, its diagnostics are complete).
+        if result.checked.is_empty() {
+            return None;
+        }
+        let diags = result
+            .diagnostics
+            .iter()
+            .filter_map(|d| crate::etylizer::to_diagnostic(&line_index, d))
+            .collect();
+        Some(diags)
+    }
+
     pub fn eqwalizer_project_diagnostics(
         &self,
         project_id: ProjectId,
