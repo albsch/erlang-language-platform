@@ -264,7 +264,12 @@ fn try_main(cli: &mut dyn Cli, mut args: Args) -> Result<()> {
             let instructions = args::gen_completions(&args.shell);
             writeln!(cli, "#Please run this:\n{instructions}")?
         }
-        args::Command::Version(_) => writeln!(cli, "elp {}", elp::version())?,
+        args::Command::Version(_) => writeln!(
+            cli,
+            "elp-etylizer (based on ELP {}, etylizer {})",
+            elp::version(),
+            elp::etylizer_version()
+        )?,
         args::Command::Shell(args) => shell::run_shell(args, cli, &query_config, ifdef)?,
         args::Command::Daemon(cmd) => {
             #[cfg(unix)]

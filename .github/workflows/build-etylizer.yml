@@ -72,7 +72,10 @@ jobs:
       - name: Bundle etylizer escript into elp
         # build.rs include_bytes! this into the binary; etylizer.rs extracts and runs it. With this
         # set, the binary needs no separate etylizer escript or ELP_ETYLIZER_PATH at runtime.
-        run: echo "ELP_ETYLIZER_ESCRIPT=$GITHUB_WORKSPACE/etylizer-src/_build/default/bin/etylizer" >> "$GITHUB_ENV"
+        # ELP_ETYLIZER_VERSION (the etylizer commit) is embedded into `elp version`.
+        run: |
+          echo "ELP_ETYLIZER_ESCRIPT=$GITHUB_WORKSPACE/etylizer-src/_build/default/bin/etylizer" >> "$GITHUB_ENV"
+          echo "ELP_ETYLIZER_VERSION=$(git -C etylizer-src rev-parse --short HEAD)" >> "$GITHUB_ENV"
 
       - name: Build elp (release)
         run: cargo build --release -p elp --bin elp
@@ -80,7 +83,7 @@ jobs:
       - name: Upload elp (release)
         uses: actions/upload-artifact@v4
         with:
-          name: elp-linux-x64-release
+          name: elp-etylizer-linux-x64
           path: target/release/elp
           if-no-files-found: error
 
@@ -92,6 +95,6 @@ jobs:
         if: ${{ inputs.build_debug }}
         uses: actions/upload-artifact@v4
         with:
-          name: elp-linux-x64-debug
+          name: elp-etylizer-linux-x64-debug
           path: target/debug/elp
           if-no-files-found: error

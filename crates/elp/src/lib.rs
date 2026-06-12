@@ -96,6 +96,12 @@ pub fn version() -> String {
     format!("{}+{}", env!("CARGO_PKG_VERSION"), env!("BUILD_ID"))
 }
 
+/// The bundled etylizer version (git short SHA), as set by `ELP_ETYLIZER_VERSION` at build time
+/// (the CI sets it from the etylizer checkout). `"unknown"` for local builds that don't set it.
+pub fn etylizer_version() -> &'static str {
+    env!("ELP_ETYLIZER_VERSION")
+}
+
 /// Initialize rayon's global thread pool with a stack size large enough for
 /// eqwalizer to parse generated modules without stack-overflowing.
 ///

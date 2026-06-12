@@ -1,8 +1,8 @@
-# Erlang Language Platform (ELP) with etylizer
+# elp-etylizer
 
-A fork of [ELP](https://github.com/WhatsApp/erlang-language-platform) that replaces
-eqWAlizer with [etylizer](https://github.com/etylizer/etylizer) as the source of type-error
-diagnostics. 
+**Unofficial fork** of WhatsApp's [Erlang Language Platform (ELP)](https://github.com/WhatsApp/erlang-language-platform)
+that adds [etylizer](https://github.com/etylizer/etylizer) as a type-checking backend in place of
+eqWAlizer. etylizer runs as a subprocess on save. Its diagnostics appear in the editor with `source: etylizer`.
 
 
 ## Setup
