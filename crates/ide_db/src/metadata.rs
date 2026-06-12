@@ -136,6 +136,7 @@ impl Annotation {
                 code,
                 DiagnosticCode::ErlangService(_)
                     | DiagnosticCode::Eqwalizer(_)
+                    | DiagnosticCode::Etylizer(_)
                     | DiagnosticCode::AdHoc(_)
             )
         })

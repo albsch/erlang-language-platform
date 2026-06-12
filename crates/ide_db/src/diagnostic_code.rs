@@ -214,6 +214,8 @@ pub enum DiagnosticCode {
     ErlangService(String),
     // Wrapper for EqWAlizer diagnostic codes
     Eqwalizer(String),
+    // Wrapper for etylizer diagnostic codes
+    Etylizer(String),
     // Used for ad-hoc diagnostics via lints/codemods
     AdHoc(String),
     // @fb-only: MetaOnly(MetaOnlyDiagnosticCode),
@@ -310,6 +312,7 @@ impl DiagnosticCode {
         match self {
             DiagnosticCode::ErlangService(c) => c.to_string(),
             DiagnosticCode::Eqwalizer(c) => format!("eqwalizer: {c}"),
+            DiagnosticCode::Etylizer(c) => format!("etylizer: {c}"),
             DiagnosticCode::AdHoc(c) => format!("ad-hoc: {c}"),
             // @fb-only: DiagnosticCode::MetaOnly(c) => c.as_code(),
             _ => self
@@ -323,6 +326,7 @@ impl DiagnosticCode {
         match self {
             DiagnosticCode::ErlangService(c) => c.to_string(),
             DiagnosticCode::Eqwalizer(c) => c.to_string(),
+            DiagnosticCode::Etylizer(c) => c.to_string(),
             DiagnosticCode::AdHoc(c) => format!("ad-hoc: {c}"),
             // @fb-only: DiagnosticCode::MetaOnly(c) => c.as_label(),
             _ => self.as_ref().to_string(),
@@ -343,6 +347,8 @@ impl DiagnosticCode {
                     Some(DiagnosticCode::AdHoc(code))
                 } else if let Some(code) = Self::is_eqwalizer(s) {
                     Some(DiagnosticCode::Eqwalizer(code))
+                } else if let Some(code) = Self::is_etylizer(s) {
+                    Some(DiagnosticCode::Etylizer(code))
                 } else {
                     Self::is_erlang_service(s).map(DiagnosticCode::ErlangService)
                 },
@@ -353,6 +359,7 @@ impl DiagnosticCode {
         match self {
             DiagnosticCode::DefaultCodeForEnumIter => None,
             DiagnosticCode::AdHoc(_) => None,
+            DiagnosticCode::Etylizer(_) => None,
             // @fb-only: DiagnosticCode::MetaOnly(_) => Some(Namespace::MetaOnly),
             DiagnosticCode::ErlangService(code) => Namespace::from_str(code).ok(),
             _ => Namespace::from_str(&self.as_code()).ok(),
@@ -427,6 +434,16 @@ impl DiagnosticCode {
         RE.captures_iter(s).next().map(|c| c[1].to_string())
     }
 
+    /// Check if the diagnostic label is for an etylizer one.
+    fn is_etylizer(s: &str) -> Option<String> {
+        // Looking for something like "etylizer: ty_error"
+        lazy_static! {
+            static ref RE: Regex =
+                Regex::new(r"^etylizer: ([^\s]+)$").expect("regex should be valid");
+        }
+        RE.captures_iter(s).next().map(|c| c[1].to_string())
+    }
+
     pub fn is_syntax_error(&self) -> bool {
         match self {
             DiagnosticCode::SyntaxError => true,
@@ -460,6 +477,7 @@ impl DiagnosticCode {
             DiagnosticCode::DefaultCodeForEnumIter
             | DiagnosticCode::ErlangService(_)
             | DiagnosticCode::Eqwalizer(_)
+            | DiagnosticCode::Etylizer(_)
             | DiagnosticCode::AdHoc(_) => false,
             _ => true,
         })
@@ -662,6 +680,7 @@ mod tests {
             match &variant {
                 DiagnosticCode::ErlangService(_)
                 | DiagnosticCode::Eqwalizer(_)
+                | DiagnosticCode::Etylizer(_)
                 | DiagnosticCode::AdHoc(_)
                 // @fb-only: | DiagnosticCode::MetaOnly(_)
                 => continue,

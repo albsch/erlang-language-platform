@@ -423,6 +423,21 @@ impl Analysis {
         })
     }
 
+    /// Include directories (local + dependencies) for the file's app, as strings. Passed to
+    /// etylizer as `-I` so it can resolve `-include(...)` the same way ELP's parser does.
+    pub fn etylizer_include_dirs(&self, file_id: FileId) -> Cancellable<Vec<String>> {
+        self.with_db(|db| {
+            db.file_app_data(file_id)
+                .map(|app| {
+                    app.include_path
+                        .iter()
+                        .map(|p| p.as_str().to_string())
+                        .collect()
+                })
+                .unwrap_or_default()
+        })
+    }
+
     /// Returns module name
     pub fn module_name(&self, file_id: FileId) -> Cancellable<Option<ModuleName>> {
         self.with_db(|db| {
