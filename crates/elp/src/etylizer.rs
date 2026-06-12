@@ -88,6 +88,22 @@ fn bundled_escript_path() -> Option<PathBuf> {
     .clone()
 }
 
+/// Type-overlay files auto-discovered in `PROJECT_ROOT/overlays/*.erl`, sorted for determinism.
+/// Empty when there is no `overlays/` directory.
+fn discover_overlays(project_root: &Path) -> Vec<PathBuf> {
+    let dir = project_root.join("overlays");
+    let mut overlays: Vec<PathBuf> = match std::fs::read_dir(&dir) {
+        Ok(entries) => entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.is_file() && p.extension().is_some_and(|e| e == "erl"))
+            .collect(),
+        Err(_) => Vec::new(),
+    };
+    overlays.sort();
+    overlays
+}
+
 /// Runs etylizer on a single saved file, returning which files it (re)checked and the
 /// diagnostics found.
 ///
@@ -112,6 +128,10 @@ pub fn run(
     // these, any file with an include fails to parse and etylizer reports nothing.
     for inc in include_dirs {
         cmd.arg("-I").arg(inc);
+    }
+    // Auto-discover type overlays in PROJECT_ROOT/overlays/*.erl.
+    for overlay in discover_overlays(root) {
+        cmd.arg("--type-overlay").arg(overlay);
     }
     let output = cmd.arg(file_path).output()?;
 
