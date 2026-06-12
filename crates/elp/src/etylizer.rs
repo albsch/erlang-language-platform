@@ -13,6 +13,7 @@ use std::sync::OnceLock;
 
 use anyhow::Result;
 use elp_ide::TextRange;
+use elp_ide::TextSize;
 use elp_ide::diagnostics::Diagnostic;
 use elp_ide::diagnostics::DiagnosticCode;
 use elp_ide::elp_ide_db::LineCol;
@@ -154,8 +155,16 @@ pub fn run(
 /// Maps an etylizer diagnostic to an ELP diagnostic, converting its 1-based line/column to a
 /// text range via the file's line index. Returns `None` if the diagnostic carries no usable
 /// line number.
-/// FIXME #112 source ranges will fix this, currently its kept as a point diagnostic
-pub fn to_diagnostic(line_index: &LineIndex, d: &EtylizerDiagnostic) -> Option<Diagnostic> {
+///
+/// etylizer reports a single point (line/column). `range_at` widens that point to the enclosing
+/// token's range so the editor draws a squiggle under the offending token; when it returns `None`
+/// (no token there) we fall back to a zero-width range at the point.
+/// TODO improve when #112 is merged on etylizer side
+pub fn to_diagnostic(
+    line_index: &LineIndex,
+    range_at: impl Fn(TextSize) -> Option<TextRange>,
+    d: &EtylizerDiagnostic,
+) -> Option<Diagnostic> {
     let line = d.line?;
     if line == 0 {
         return None;
@@ -166,9 +175,10 @@ pub fn to_diagnostic(line_index: &LineIndex, d: &EtylizerDiagnostic) -> Option<D
         line: line - 1,
         col_utf16: col - 1,
     });
+    let range = range_at(offset).unwrap_or_else(|| TextRange::empty(offset));
     Some(Diagnostic::new(
         DiagnosticCode::Etylizer(d.kind.clone()),
         d.message.clone(),
-        TextRange::empty(offset),
+        range,
     ))
 }
