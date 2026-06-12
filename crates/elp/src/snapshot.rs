@@ -267,7 +267,19 @@ impl Snapshot {
         let diags = result
             .diagnostics
             .iter()
-            .filter_map(|d| crate::etylizer::to_diagnostic(&line_index, d))
+            .filter_map(|d| {
+                crate::etylizer::to_diagnostic(
+                    &line_index,
+                    // Widen each point diagnostic to its enclosing token (a visible squiggle).
+                    |offset| {
+                        self.analysis
+                            .token_range_at_offset(file_id, offset)
+                            .ok()
+                            .flatten()
+                    },
+                    d,
+                )
+            })
             .collect();
         Some(diags)
     }

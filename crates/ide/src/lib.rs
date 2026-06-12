@@ -63,6 +63,7 @@ use elp_project_model::AppType;
 use elp_syntax::AstNode;
 use elp_syntax::SmolStr;
 use elp_syntax::SyntaxKind;
+use elp_syntax::TokenAtOffset;
 use elp_syntax::algo::ancestors_at_offset;
 use elp_syntax::ast;
 use elp_syntax::label::Label;
@@ -505,6 +506,34 @@ impl Analysis {
     /// When we get an offset from the client, limit it to what is in the source file
     pub fn clamp_offset(&self, file_id: FileId, offset: TextSize) -> Cancellable<TextSize> {
         self.with_db(|db| db.clamp_offset(file_id, offset))
+    }
+
+    /// The text range of the token at `offset`. etylizer reports type errors at a single point
+    /// (line/column); widening that point to its enclosing token gives editors a visible squiggle
+    /// under the offending token instead of a zero-width marker. Returns `None` when there is no
+    /// token at the offset (e.g. past EOF).
+    pub fn token_range_at_offset(
+        &self,
+        file_id: FileId,
+        offset: TextSize,
+    ) -> Cancellable<Option<TextRange>> {
+        self.with_db(|db| {
+            let source_file = db.parse(file_id).tree();
+            let token = match source_file.syntax().token_at_offset(offset) {
+                TokenAtOffset::None => return None,
+                TokenAtOffset::Single(t) => t,
+                // etylizer points at the *start* of the offending token, so prefer the token to
+                // the right of the boundary; fall back to the left when the right side is trivia.
+                TokenAtOffset::Between(left, right) => {
+                    if right.kind().is_trivia() {
+                        left
+                    } else {
+                        right
+                    }
+                }
+            };
+            Some(token.text_range())
+        })
     }
 
     /// Convenience function to return assists + quick fixes for diagnostics
