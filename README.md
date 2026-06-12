@@ -56,3 +56,4 @@ rebar3 compile
 - Include directories are taken from ELP's own project model and passed to etylizer, so
   `-include(...)` resolves the same way ELP resolves it.
 - Diagnostics show with `source: etylizer` and a code like `etylizer: ty_error`.
+- Type overlays are automatically found and added via `--type-overlay` from overlays/*.erl
