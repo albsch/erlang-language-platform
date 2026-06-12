@@ -1,0 +1,69 @@
+name: Build etylizer-ELP
+
+# Builds the etylizer-integrated `elp` binary on every push to dev-etylizer.
+on:
+  push:
+    branches: [dev-etylizer]
+  workflow_dispatch:
+    inputs:
+      build_debug:
+        description: "Also build and upload a debug binary"
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        # eqwalizer build inputs are stubbed
+
+        # erlang_service is built (via rebar3) because ELP needs it to parse Erlang.
+        # should be lower than the system's OTP version, so we'll deliberately use the lowest OTP version
+        # that is currently supported by etylizer
+      - name: Setup Erlang/OTP + rebar3
+        uses: ./.github/actions/setup-erlang
+        with:
+          os: linux
+          otp-version: "28.0"
+          brew-otp-version: "28"
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Stub eqwalizer build inputs
+        # eqwalizer is never invoked on the etylizer diagnostics path, so a dummy artifact and a
+        # placeholder support directory satisfy the eqwalizer/elp build scripts. The intermediate
+        # `.../eqwalizer/eqwalizer` dir must exist so `EQWALIZER_DIR/../eqwalizer_support` resolves.
+        run: |
+          printf dummy > "$RUNNER_TEMP/eqwalizer.jar"
+          mkdir -p "$RUNNER_TEMP/eqwalizer/eqwalizer" "$RUNNER_TEMP/eqwalizer/eqwalizer_support"
+          printf '%% placeholder\n' > "$RUNNER_TEMP/eqwalizer/eqwalizer_support/placeholder.erl"
+          echo "ELP_EQWALIZER_PATH=$RUNNER_TEMP/eqwalizer.jar" >> "$GITHUB_ENV"
+          echo "EQWALIZER_DIR=$RUNNER_TEMP/eqwalizer/eqwalizer" >> "$GITHUB_ENV"
+
+      - name: Build elp (release)
+        run: cargo build --release -p elp --bin elp
+
+      - name: Upload elp (release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: elp-linux-x64-release
+          path: target/release/elp
+          if-no-files-found: error
+
+      - name: Build elp (debug)
+        if: ${{ inputs.build_debug }}
+        run: cargo build -p elp --bin elp
+
+      - name: Upload elp (debug)
+        if: ${{ inputs.build_debug }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: elp-linux-x64-debug
+          path: target/debug/elp
+          if-no-files-found: error

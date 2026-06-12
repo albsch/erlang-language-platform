@@ -1,6 +1,9 @@
 name: ELP CI
 on:
-  push: {}
+  # Restricted to main so the heavy build matrix does not run on the dev-etylizer branch
+  push:
+    branches:
+      - main
   pull_request:
     branches:
       - main
