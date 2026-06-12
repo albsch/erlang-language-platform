@@ -68,8 +68,12 @@ impl ServerSetup {
         let server_capabilities = capabilities::compute(&params.capabilities);
 
         let server_info = ServerInfo {
-            name: "elp".to_string(),
-            version: Some(crate::version()),
+            name: "elp-etylizer".to_string(),
+            version: Some(format!(
+                "{} (etylizer {})",
+                crate::version(),
+                crate::etylizer_version()
+            )),
         };
 
         let result = InitializeResult {
@@ -84,8 +88,9 @@ impl ServerSetup {
         let otp_details =
             Otp::system_version().unwrap_or_else(|err| format!("Could not find OTP: {err}"));
         let message = format!(
-            "ELP version: {}, OTP version: {}",
+            "elp-etylizer version: {} (etylizer {}), OTP version: {}",
             crate::version(),
+            crate::etylizer_version(),
             otp_details
         );
         let show_message_params = lsp_types::ShowMessageParams {

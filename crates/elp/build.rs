@@ -20,6 +20,7 @@ const EQWALIZER_DIR: &str = "EQWALIZER_DIR";
 const EQWALIZER_SUPPORT_DIR: &str = "EQWALIZER_SUPPORT_DIR";
 const CARGO_MANIFEST_DIR: &str = "CARGO_MANIFEST_DIR";
 const ELP_ETYLIZER_ESCRIPT: &str = "ELP_ETYLIZER_ESCRIPT";
+const ELP_ETYLIZER_VERSION: &str = "ELP_ETYLIZER_VERSION";
 
 fn main() {
     let date_format =
@@ -76,4 +77,10 @@ fn main() {
         etylizer_dest.display()
     );
     println!("cargo:rerun-if-env-changed={ELP_ETYLIZER_ESCRIPT}");
+
+    // The bundled etylizer's version (git short SHA), provided by the CI. "unknown" otherwise.
+    let etylizer_version =
+        env::var(ELP_ETYLIZER_VERSION).unwrap_or_else(|_| "unknown".to_string());
+    println!("cargo:rustc-env={ELP_ETYLIZER_VERSION}={etylizer_version}");
+    println!("cargo:rerun-if-env-changed={ELP_ETYLIZER_VERSION}");
 }
