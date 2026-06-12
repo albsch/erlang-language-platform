@@ -5,8 +5,11 @@
 //! array of diagnostics on stdout (one object per type error), exiting 0 even when there are
 //! diagnostics. See `etylizer --report-mode json`
 
+use std::io::Write;
 use std::path::Path;
+use std::path::PathBuf;
 use std::process::Command;
+use std::sync::OnceLock;
 
 use anyhow::Result;
 use elp_ide::TextRange;
@@ -45,9 +48,44 @@ pub struct EtylizerDiagnostic {
     pub message: String,
 }
 
-/// Path to the etylizer escript. Override with `ELP_ETYLIZER_PATH`; defaults to `etylizer` on `PATH`.
-fn etylizer_path() -> String {
-    std::env::var("ELP_ETYLIZER_PATH").unwrap_or_else(|_| "etylizer".to_string())
+/// The etylizer escript, embedded at build time when `ELP_ETYLIZER_ESCRIPT` was set (see erlang_service escript). 
+/// Empty when not bundled, we fall back to `ELP_ETYLIZER_PATH` / `etylizer` on `PATH`.
+static EMBEDDED_ETYLIZER: &[u8] = include_bytes!(env!("ELP_ETYLIZER_ESCRIPT_PATH"));
+
+/// Builds the base command to invoke etylizer. 
+fn etylizer_command() -> Command {
+    if let Some(path) = std::env::var_os("ELP_ETYLIZER_PATH") {
+        return Command::new(path);
+    }
+    if let Some(escript_file) = bundled_escript_path() {
+        let escript = std::env::var("ELP_ESCRIPT").unwrap_or_else(|_| "escript".to_string());
+        let mut cmd = Command::new(escript);
+        cmd.arg(escript_file);
+        return cmd;
+    }
+    Command::new("etylizer")
+}
+
+/// Extracts the embedded etylizer escript to a temp file once (kept for the process lifetime,
+/// since etylizer is spawned on every save) and returns its path. `None` when nothing was bundled.
+fn bundled_escript_path() -> Option<PathBuf> {
+    static PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+    PATH.get_or_init(|| {
+        if EMBEDDED_ETYLIZER.is_empty() {
+            return None;
+        }
+        let mut file = tempfile::Builder::new()
+            .prefix("elp-etylizer")
+            .tempfile()
+            .ok()?;
+        file.write_all(EMBEDDED_ETYLIZER).ok()?;
+        // Keep the file alive for the whole process; don't delete it on drop.
+        let temp_path = file.into_temp_path();
+        let owned = temp_path.to_path_buf();
+        std::mem::forget(temp_path);
+        Some(owned)
+    })
+    .clone()
 }
 
 /// Runs etylizer on a single saved file, returning which files it (re)checked and the
@@ -67,7 +105,7 @@ pub fn run(
 ) -> Result<EtylizerOutput> {
     let root: &Path = project_root.as_ref();
     let file_path: &Path = file.as_ref();
-    let mut cmd = Command::new(etylizer_path());
+    let mut cmd = etylizer_command();
     cmd.args(["--report-mode", "json", "--no-deps", "-P"])
         .arg(root);
     // Pass the app's include directories so etylizer can resolve `-include(...)`; without
