@@ -19,6 +19,7 @@ const SOURCE_DATE_EPOCH: &str = "SOURCE_DATE_EPOCH";
 const EQWALIZER_DIR: &str = "EQWALIZER_DIR";
 const EQWALIZER_SUPPORT_DIR: &str = "EQWALIZER_SUPPORT_DIR";
 const CARGO_MANIFEST_DIR: &str = "CARGO_MANIFEST_DIR";
+const ELP_ETYLIZER_ESCRIPT: &str = "ELP_ETYLIZER_ESCRIPT";
 
 fn main() {
     let date_format =
@@ -47,10 +48,32 @@ fn main() {
         Err(_) => format!("{cargo_manifest_dir}/../../../eqwalizer/eqwalizer_support"),
     };
 
+    // Optionally embed the etylizer escript into the binary (like the erlang_service escript).
+    // When ELP_ETYLIZER_ESCRIPT points at a prebuilt escript (the CI builds it from the etylizer
+    // repo), copy it next to the binary so etylizer.rs can `include_bytes!` it. Otherwise write an
+    // empty placeholder, and the binary falls back to ELP_ETYLIZER_PATH / `etylizer` on PATH.
+    let out_dir = env::var("OUT_DIR").expect("OUT_DIR set by cargo");
+    let etylizer_dest = std::path::Path::new(&out_dir).join("etylizer_escript");
+    match env::var_os(ELP_ETYLIZER_ESCRIPT) {
+        Some(src) => {
+            let src = std::path::PathBuf::from(src);
+            std::fs::copy(&src, &etylizer_dest).expect("copying ELP_ETYLIZER_ESCRIPT failed");
+            println!("cargo:rerun-if-changed={}", src.display());
+        }
+        None => {
+            std::fs::write(&etylizer_dest, b"").expect("writing empty etylizer placeholder failed");
+        }
+    }
+
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed={SOURCE_DATE_EPOCH}");
     println!("cargo:rerun-if-env-changed={CI}");
     println!("cargo:rustc-env=BUILD_ID={build_id}");
     println!("cargo:rustc-env={EQWALIZER_SUPPORT_DIR}={eqwalizer_support_dir}");
     println!("cargo:rerun-if-env-changed={EQWALIZER_DIR}");
+    println!(
+        "cargo:rustc-env=ELP_ETYLIZER_ESCRIPT_PATH={}",
+        etylizer_dest.display()
+    );
+    println!("cargo:rerun-if-env-changed={ELP_ETYLIZER_ESCRIPT}");
 }

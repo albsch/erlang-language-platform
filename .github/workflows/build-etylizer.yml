@@ -10,10 +10,18 @@ on:
         description: "Also build and upload a debug binary"
         type: boolean
         default: false
+      etylizer_ref:
+        description: "etylizer branch/tag/sha to bundle"
+        type: string
+        default: "dev-elp"
 
 jobs:
   build:
     runs-on: ubuntu-22.04
+    env:
+      # The etylizer repo + branch to build and bundle into the elp binary.
+      ETYLIZER_REPO: "etylizer/etylizer"
+      ETYLIZER_REF: "dev-elp"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -45,6 +53,26 @@ jobs:
           printf '%% placeholder\n' > "$RUNNER_TEMP/eqwalizer/eqwalizer_support/placeholder.erl"
           echo "ELP_EQWALIZER_PATH=$RUNNER_TEMP/eqwalizer.jar" >> "$GITHUB_ENV"
           echo "EQWALIZER_DIR=$RUNNER_TEMP/eqwalizer/eqwalizer" >> "$GITHUB_ENV"
+
+      - name: Checkout etylizer
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ETYLIZER_REPO }}
+          ref: ${{ github.event.inputs.etylizer_ref || env.ETYLIZER_REF }}
+          path: etylizer-src
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build etylizer escript
+        # Produces etylizer-src/_build/default/bin/etylizer (a self-contained escript).
+        # Needs rebar3 (set up above), a C toolchain for the espresso pre-hook (present on the
+        # runner), and OTP.
+        working-directory: etylizer-src
+        run: rebar3 escriptize
+
+      - name: Bundle etylizer escript into elp
+        # build.rs include_bytes! this into the binary; etylizer.rs extracts and runs it. With this
+        # set, the binary needs no separate etylizer escript or ELP_ETYLIZER_PATH at runtime.
+        run: echo "ELP_ETYLIZER_ESCRIPT=$GITHUB_WORKSPACE/etylizer-src/_build/default/bin/etylizer" >> "$GITHUB_ENV"
 
       - name: Build elp (release)
         run: cargo build --release -p elp --bin elp
