@@ -6,7 +6,9 @@ inputs:
   otp-version:
     required: true
   brew-otp-version:
-    required: true
+    # Only used by the macOS (Homebrew) install below; optional so Linux/Windows callers can omit it.
+    required: false
+    default: ""
 
 runs:
   using: composite

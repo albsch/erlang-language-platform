@@ -20,6 +20,7 @@ const EQWALIZER_DIR: &str = "EQWALIZER_DIR";
 const EQWALIZER_SUPPORT_DIR: &str = "EQWALIZER_SUPPORT_DIR";
 const CARGO_MANIFEST_DIR: &str = "CARGO_MANIFEST_DIR";
 const ELP_ETYLIZER_ESCRIPT: &str = "ELP_ETYLIZER_ESCRIPT";
+const ELP_ETYLIZER_ESPRESSO: &str = "ELP_ETYLIZER_ESPRESSO";
 const ELP_ETYLIZER_VERSION: &str = "ELP_ETYLIZER_VERSION";
 
 fn main() {
@@ -66,6 +67,23 @@ fn main() {
         }
     }
 
+    // etylizer shells out to a native `espresso` binary (the Berkeley logic minimizer) at
+    // runtime. Embed the per-OS/arch espresso the CI built next to the escript so etylizer.rs can
+    // `include_bytes!` it, extract it, and point etylizer at it via the ETYLIZER_ESPRESSO env var.
+    // Without this the binary depends on a prior native etylizer build having populated
+    // ~/.cache/etylizer/espresso. Empty placeholder when not bundled.
+    let espresso_dest = std::path::Path::new(&out_dir).join("etylizer_espresso");
+    match env::var_os(ELP_ETYLIZER_ESPRESSO) {
+        Some(src) => {
+            let src = std::path::PathBuf::from(src);
+            std::fs::copy(&src, &espresso_dest).expect("copying ELP_ETYLIZER_ESPRESSO failed");
+            println!("cargo:rerun-if-changed={}", src.display());
+        }
+        None => {
+            std::fs::write(&espresso_dest, b"").expect("writing empty espresso placeholder failed");
+        }
+    }
+
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed={SOURCE_DATE_EPOCH}");
     println!("cargo:rerun-if-env-changed={CI}");
@@ -77,6 +95,11 @@ fn main() {
         etylizer_dest.display()
     );
     println!("cargo:rerun-if-env-changed={ELP_ETYLIZER_ESCRIPT}");
+    println!(
+        "cargo:rustc-env=ELP_ETYLIZER_ESPRESSO_PATH={}",
+        espresso_dest.display()
+    );
+    println!("cargo:rerun-if-env-changed={ELP_ETYLIZER_ESPRESSO}");
 
     // The bundled etylizer's version (git short SHA), provided by the CI. "unknown" otherwise.
     let etylizer_version =

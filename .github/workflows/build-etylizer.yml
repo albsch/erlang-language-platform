@@ -1,58 +1,67 @@
 name: Build etylizer-ELP
 
-# Builds the etylizer-integrated `elp` binary on every push to dev-etylizer.
+# Builds the etylizer-integrated `elp` binary for Linux, macOS and Windows on every push to dev-etylizer. 
 on:
   push:
     branches: [dev-etylizer]
   workflow_dispatch:
     inputs:
-      build_debug:
-        description: "Also build and upload a debug binary"
-        type: boolean
-        default: false
       etylizer_ref:
         description: "etylizer branch/tag/sha to bundle"
         type: string
         default: "dev-elp"
 
-jobs:
-  build:
-    runs-on: ubuntu-22.04
-    env:
-      # The etylizer repo + branch to build and bundle into the elp binary.
-      ETYLIZER_REPO: "etylizer/etylizer"
-      ETYLIZER_REF: "dev-elp"
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        # eqwalizer build inputs are stubbed
+env:
+  ETYLIZER_REPO: "etylizer/etylizer"
+  ETYLIZER_REF: "dev-elp"
+  OTP_VERSION: "28.0"
+  BREW_OTP_VERSION: "28"
 
-        # erlang_service is built (via rebar3) because ELP needs it to parse Erlang.
-        # should be lower than the system's OTP version, so we'll deliberately use the lowest OTP version
-        # that is currently supported by etylizer
+jobs:
+  build-unix:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: linux, arch: x64,   runner: ubuntu-22.04,     target: x86_64-unknown-linux-gnu }
+          - { os: linux, arch: arm64, runner: ubuntu-22.04-arm, target: aarch64-unknown-linux-gnu }
+          - { os: macos, arch: x64,   runner: macos-15-intel,   target: x86_64-apple-darwin }
+          - { os: macos, arch: arm64, runner: macos-latest,     target: aarch64-apple-darwin }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Checkout elp
+        uses: actions/checkout@v4
+
+      # Only needed on the arm64 Linux runner (setup-beam's OS map doesn't recognise its ubuntu22-arm64 ImageOS)
+      - name: Pin setup-beam ImageOS
+        run: echo "ImageOS=ubuntu22" >> "$GITHUB_ENV"
+
       - name: Setup Erlang/OTP + rebar3
         uses: ./.github/actions/setup-erlang
         with:
-          os: linux
-          otp-version: "28.0"
-          brew-otp-version: "28"
+          os: ${{ matrix.os }}
+          otp-version: ${{ env.OTP_VERSION }}
+          brew-otp-version: ${{ env.BREW_OTP_VERSION }}
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          target: ${{ matrix.target }}
 
       - name: Cache cargo build
         uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
       - name: Stub eqwalizer build inputs
-        # eqwalizer is never invoked on the etylizer diagnostics path, so a dummy artifact and a
-        # placeholder support directory satisfy the eqwalizer/elp build scripts. The intermediate
-        # `.../eqwalizer/eqwalizer` dir must exist so `EQWALIZER_DIR/../eqwalizer_support` resolves.
+        # eqwalizer is never invoked on the etylizer path; dummy inputs satisfy its build scripts.
         run: |
-          printf dummy > "$RUNNER_TEMP/eqwalizer.jar"
-          mkdir -p "$RUNNER_TEMP/eqwalizer/eqwalizer" "$RUNNER_TEMP/eqwalizer/eqwalizer_support"
-          printf '%% placeholder\n' > "$RUNNER_TEMP/eqwalizer/eqwalizer_support/placeholder.erl"
-          echo "ELP_EQWALIZER_PATH=$RUNNER_TEMP/eqwalizer.jar" >> "$GITHUB_ENV"
-          echo "EQWALIZER_DIR=$RUNNER_TEMP/eqwalizer/eqwalizer" >> "$GITHUB_ENV"
+          STUB="$RUNNER_TEMP/eqwstub"
+          mkdir -p "$STUB/eqwalizer" "$STUB/eqwalizer_support"
+          printf dummy > "$STUB/eqwalizer.jar"
+          printf '%% placeholder\n' > "$STUB/eqwalizer_support/placeholder.erl"
+          echo "ELP_EQWALIZER_PATH=$STUB/eqwalizer.jar" >> "$GITHUB_ENV"
+          echo "EQWALIZER_DIR=$STUB/eqwalizer" >> "$GITHUB_ENV"
 
       - name: Checkout etylizer
         uses: actions/checkout@v4
@@ -62,39 +71,94 @@ jobs:
           path: etylizer-src
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build etylizer escript
-        # Produces etylizer-src/_build/default/bin/etylizer (a self-contained escript).
-        # Needs rebar3 (set up above), a C toolchain for the espresso pre-hook (present on the
-        # runner), and OTP.
+      - name: Build etylizer escript + espresso
         working-directory: etylizer-src
         run: rebar3 escriptize
 
-      - name: Bundle etylizer escript into elp
-        # build.rs include_bytes! this into the binary; etylizer.rs extracts and runs it. With this
-        # set, the binary needs no separate etylizer escript or ELP_ETYLIZER_PATH at runtime.
-        # ELP_ETYLIZER_VERSION (the etylizer commit) is embedded into `elp version`.
+      - name: Bundle escript, espresso and version into elp
         run: |
-          echo "ELP_ETYLIZER_ESCRIPT=$GITHUB_WORKSPACE/etylizer-src/_build/default/bin/etylizer" >> "$GITHUB_ENV"
-          echo "ELP_ETYLIZER_VERSION=$(git -C etylizer-src rev-parse --short HEAD)" >> "$GITHUB_ENV"
+          SRC="$GITHUB_WORKSPACE/etylizer-src"
+          test -f "$SRC/_build/default/bin/etylizer" || { echo "::error::etylizer escript not built"; exit 1; }
+          test -f "$SRC/_build/espresso" || { echo "::error::espresso not built"; exit 1; }
+          echo "ELP_ETYLIZER_ESCRIPT=$SRC/_build/default/bin/etylizer" >> "$GITHUB_ENV"
+          echo "ELP_ETYLIZER_ESPRESSO=$SRC/_build/espresso" >> "$GITHUB_ENV"
+          echo "ELP_ETYLIZER_VERSION=$(git -C "$SRC" rev-parse --short HEAD)" >> "$GITHUB_ENV"
 
       - name: Build elp (release)
-        run: cargo build --release -p elp --bin elp
+        run: cargo build --release --target ${{ matrix.target }} -p elp --bin elp
 
-      - name: Upload elp (release)
+      - name: Upload elp
         uses: actions/upload-artifact@v4
         with:
-          name: elp-etylizer-linux-x64
-          path: target/release/elp
+          name: elp-etylizer-${{ matrix.os }}-${{ matrix.arch }}
+          path: target/${{ matrix.target }}/release/elp
           if-no-files-found: error
 
-      - name: Build elp (debug)
-        if: ${{ inputs.build_debug }}
-        run: cargo build -p elp --bin elp
+  build-windows:
+    runs-on: windows-2022
+    steps:
+      - name: Checkout elp
+        uses: actions/checkout@v4
 
-      - name: Upload elp (debug)
-        if: ${{ inputs.build_debug }}
+      - name: Setup Erlang/OTP + rebar3
+        uses: ./.github/actions/setup-erlang
+        with:
+          os: windows
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          target: x86_64-pc-windows-msvc
+
+      - name: Cache cargo build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: x86_64-pc-windows-msvc
+
+      # Setup to compile ISO C99 
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Stub eqwalizer build inputs
+        # eqwalizer is never invoked on the etylizer path; dummy inputs satisfy its build scripts.
+        run: |
+          $stub = "$env:RUNNER_TEMP\eqwstub"
+          New-Item -ItemType Directory -Force -Path "$stub\eqwalizer", "$stub\eqwalizer_support" | Out-Null
+          Set-Content -NoNewline -Path "$stub\eqwalizer.jar" -Value "dummy"
+          Set-Content -Path "$stub\eqwalizer_support\placeholder.erl" -Value "% placeholder"
+          "ELP_EQWALIZER_PATH=$stub\eqwalizer.jar" >> $env:GITHUB_ENV
+          "EQWALIZER_DIR=$stub\eqwalizer" >> $env:GITHUB_ENV
+
+      - name: Checkout etylizer
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ETYLIZER_REPO }}
+          ref: ${{ github.event.inputs.etylizer_ref || env.ETYLIZER_REF }}
+          path: etylizer-src
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build etylizer escript + espresso
+        working-directory: etylizer-src
+        shell: cmd
+        run: rebar3.cmd escriptize
+
+      - name: Bundle escript, espresso and version into elp
+        run: |
+          $src = "$env:GITHUB_WORKSPACE\etylizer-src"
+          if (-not (Test-Path "$src\_build\default\bin\etylizer")) { Write-Error "etylizer escript not built"; exit 1 }
+          if (-not (Test-Path "$src\_build\espresso.exe")) { Write-Error "espresso.exe not built"; exit 1 }
+          "ELP_ETYLIZER_ESCRIPT=$src\_build\default\bin\etylizer" >> $env:GITHUB_ENV
+          "ELP_ETYLIZER_ESPRESSO=$src\_build\espresso.exe" >> $env:GITHUB_ENV
+          "ELP_ETYLIZER_VERSION=$(git -C $src rev-parse --short HEAD)" >> $env:GITHUB_ENV
+
+      - name: Build elp (release)
+        # drop jemalloc, see other workflows
+        run: cargo build --release --target x86_64-pc-windows-msvc --no-default-features -p elp --bin elp
+
+      - name: Upload elp
         uses: actions/upload-artifact@v4
         with:
-          name: elp-etylizer-linux-x64-debug
-          path: target/debug/elp
+          name: elp-etylizer-windows-x64
+          path: target/x86_64-pc-windows-msvc/release/elp.exe
           if-no-files-found: error

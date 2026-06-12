@@ -5,6 +5,21 @@ that adds [etylizer](https://github.com/etylizer/etylizer) as a type-checking ba
 eqWAlizer. etylizer runs as a subprocess on save. Its diagnostics appear in the editor with `source: etylizer`.
 
 
+## Downloads
+
+Release artifacts are published per platform:
+
+| Platform            | Artifact                     |
+| ------------------- | ---------------------------- |
+| Linux x86-64        | `elp-etylizer-linux-x64`     |
+| Linux arm64         | `elp-etylizer-linux-arm64`   |
+| macOS Intel         | `elp-etylizer-macos-x64`     |
+| macOS Apple Silicon | `elp-etylizer-macos-arm64`   |
+| Windows x86-64      | `elp-etylizer-windows-x64`   |
+
+Confirm which build you have with `elp version` (e.g. `elp-etylizer (based on ELP …, etylizer <sha>)`).
+Every release is experimental, and the Linux x86-64 release is actively tested.
+
 ## Setup
 
 ### 1. Configure your editor

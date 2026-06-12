@@ -89,6 +89,42 @@ fn bundled_escript_path() -> Option<PathBuf> {
     .clone()
 }
 
+/// The native `espresso` binary (Berkeley logic minimizer) etylizer shells out to at runtime,
+/// embedded at build time when `ELP_ETYLIZER_ESPRESSO` was set. Empty when not bundled; etylizer
+/// then falls back to its own `~/.cache/etylizer/espresso`, populated by a native etylizer build.
+static EMBEDDED_ESPRESSO: &[u8] = include_bytes!(env!("ELP_ETYLIZER_ESPRESSO_PATH"));
+
+/// Extracts the embedded espresso binary to an *executable* temp file once (kept for the process
+/// lifetime) and returns its path. `None` when nothing was bundled.
+fn bundled_espresso_path() -> Option<PathBuf> {
+    static PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
+    PATH.get_or_init(|| {
+        if EMBEDDED_ESPRESSO.is_empty() {
+            return None;
+        }
+        let mut builder = tempfile::Builder::new();
+        builder.prefix("elp-espresso");
+        // etylizer runs espresso via spawn_executable; on Windows that wants an `.exe`,
+        // on unix it needs the execute bit (set below).
+        #[cfg(windows)]
+        builder.suffix(".exe");
+        let mut file = builder.tempfile().ok()?;
+        file.write_all(EMBEDDED_ESPRESSO).ok()?;
+        file.flush().ok()?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(file.path(), std::fs::Permissions::from_mode(0o755)).ok()?;
+        }
+        // Keep the file alive for the whole process; don't delete it on drop.
+        let temp_path = file.into_temp_path();
+        let owned = temp_path.to_path_buf();
+        std::mem::forget(temp_path);
+        Some(owned)
+    })
+    .clone()
+}
+
 /// Type-overlay files auto-discovered in `PROJECT_ROOT/overlays/*.erl`, sorted for determinism.
 /// Empty when there is no `overlays/` directory.
 fn discover_overlays(project_root: &Path) -> Vec<PathBuf> {
@@ -123,6 +159,14 @@ pub fn run(
     let root: &Path = project_root.as_ref();
     let file_path: &Path = file.as_ref();
     let mut cmd = etylizer_command();
+    // etylizer resolves its espresso minimizer from the ETYLIZER_ESPRESSO env var; point it at the
+    // bundled per-platform binary unless the caller already set it. Without this a freshly
+    // downloaded elp would depend on ~/.cache/etylizer/espresso already existing.
+    if std::env::var_os("ETYLIZER_ESPRESSO").is_none() {
+        if let Some(espresso) = bundled_espresso_path() {
+            cmd.env("ETYLIZER_ESPRESSO", espresso);
+        }
+    }
     cmd.args(["--report-mode", "json", "--no-deps", "-P"])
         .arg(root);
     // Pass the app's include directories so etylizer can resolve `-include(...)`; without
